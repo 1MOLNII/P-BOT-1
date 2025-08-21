@@ -1,13 +1,20 @@
 P-BOT 1.0.
 pbot-project/
-├── index.js          # Основной файл приложения // index.js
+├── index.js // index.js
 const express = require('express');
 const app = express();
 const PORT = process.env.PORT || 3000;
 
-// Маршруты
+// Подключаем контроллеры
+const YandexSearchController = require('./controllers/yandex_search_controller');
+const VkMusicController = require('./controllers/vk_music_controller');
+
+// Настраиваем контроллеры
+const yandexSearchCtrl = new YandexSearchController();
+const vkMusicCtrl = new VkMusicController('ВАШ_ACCESS_TOKEN');
+
+// Роуты
 app.use(require('./routes/api'));
-app.use(require('./routes/webhooks'));
 
 // Запуск сервера
 app.listen(PORT, () => {
@@ -49,30 +56,25 @@ module.exports = RedisCache;
 │   ├── api.js // routes/api.js
 const express = require('express');
 const router = express.Router();
-const MusicController = require('../controllers/music_controller');
-const SearchController = require('../controllers/search_controller');
+const YandexSearchController = require('../controllers/yandex_search_controller');
+const VkMusicController = require('../controllers/vk_music_controller');
 
-router.get('/music/:videoURL', async (req, res) => {
-  const controller = new MusicController();
-  await controller.playMusic(req.params.videoURL);
-  res.sendStatus(200);
-});
+// Создаем экземпляры контроллеров
+const yandexSearchCtrl = new YandexSearchController();
+const vkMusicCtrl = new VkMusicController('ВАШ_ACCESS_TOKEN');
 
-router.get('/search/:query', async (req, res) => {
-  const controller = new SearchController();
-  const results = await controller.googleSearch(req.params.query);
+// Роут для поиска в Яндекс
+router.get('/search-yandex/:query', async (req, res) => {
+  const query = req.params.query;
+  const results = await yandexSearchCtrl.search(query);
   res.json(results);
 });
 
-module.exports = router;
-routes/ webhooks.js // routes/webhooks.js
-const express = require('express');
-const router = express.Router();
-
-router.post('/webhooks', (req, res) => {
-  // Логика обработки вебхука
-  console.log('Received webhook:', req.body);
-  res.sendStatus(200);
+// Роут для поиска музыки в ВКонтакте
+router.get('/search-vkmusic/:query', async (req, res) => {
+  const query = req.params.query;
+  const tracks = await vkMusicCtrl.searchMusic(query);
+  res.json(tracks);
 });
 
 module.exports = router;
@@ -105,6 +107,57 @@ class SearchController {
 }
 
 module.exports = SearchController;
+│   ├── yandex_search_controller.js // controllers/yandex_search_controller.js
+const axios = require('axios');
+
+class YandexSearchController {
+  async search(query) {
+    try {
+      const response = await axios.get('https://yandex.ru/search/', {
+        params: {
+          text: query
+        }
+      });
+      return response.data;
+    } catch (error) {
+      console.error('Ошибка при поиске в Яндекс:', error);
+      return null;
+    }
+  }
+}
+
+module.exports = YandexSearchController;  # Новый контроллер для поиска в Яндекс
+│   └── vk_music_controller.js // controllers/vk_music_controller.js
+const axios = require('axios');
+
+class VkMusicController {
+  constructor(accessToken) {
+    this.accessToken = accessToken;
+    this.version = '5.131'; // Версия API ВКонтакте
+  }
+
+  async searchMusic(query) {
+    try {
+      const response = await axios.get('https://api.vk.com/method/audio.search', {
+        params: {
+          q: query,
+          auto_complete: 1,
+          lyrics: 1,
+          performer_only: 1,
+          v: this.version,
+          access_token: this.accessToken
+        }
+      });
+
+      return response.data.response.items;
+    } catch (error) {
+      console.error('Ошибка при поиске музыки:', error);
+      return [];
+    }
+  }
+}
+
+module.exports = VkMusicController;      # Новый контроллер для поиска и воспроизведения музыки из ВКонтакте
 ├── middlewares/      # Директория для middleware // middlewares/auth_middleware.js
 function authenticate(req, res, next) {
   // Логика аутентификации
